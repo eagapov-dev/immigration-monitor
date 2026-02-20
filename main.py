@@ -25,6 +25,7 @@ from database import Database
 from classifiers import Classifier
 from sources.reddit import RedditSource
 from sources.telegram import TelegramSource
+from sources.forums import ForumSource
 from outputs.telegram_bot import TelegramOutput
 
 
@@ -75,6 +76,11 @@ class ImmigrationMonitor:
         if tg_config.get("api_id") and tg_config["api_id"] != "YOUR_API_ID":
             self.sources.append(TelegramSource(tg_config))
             logger.info("Telegram source initialized")
+
+        forums_config = config.get("forums", {})
+        if forums_config.get("forums"):
+            self.sources.append(ForumSource(forums_config))
+            logger.info("Forum source initialized (RSS mode)")
 
         # Initialize outputs
         self.outputs = []
@@ -161,6 +167,7 @@ class ImmigrationMonitor:
 
         reddit_config = self.config.get("reddit", {})
         telegram_config = self.config.get("telegram", {})
+        forums_config = self.config.get("forums", {})
 
         for source in self.sources:
             if isinstance(source, RedditSource):
@@ -170,6 +177,10 @@ class ImmigrationMonitor:
             elif isinstance(source, TelegramSource):
                 lookback_hours = telegram_config.get("lookback_hours", 2)
                 await self.process_source(source, lookback_hours)
+            elif isinstance(source, ForumSource):
+                lookback = forums_config.get("check_interval_minutes", 60) * 4
+                lookback_hours = max(lookback / 60, 1)
+                await self.process_source(source, int(lookback_hours))
 
         self.db.cleanup_old_records(days=30)
         logger.info(f"--- Cycle completed ---\n")
@@ -183,16 +194,20 @@ class ImmigrationMonitor:
 
         reddit_config = self.config.get("reddit", {})
         telegram_config = self.config.get("telegram", {})
+        forums_config = self.config.get("forums", {})
 
         reddit_interval = reddit_config.get("check_interval_minutes", 15) * 60
         telegram_interval = telegram_config.get("check_interval_minutes", 30) * 60
+        forums_interval = forums_config.get("check_interval_minutes", 60) * 60
 
         has_reddit = any(isinstance(s, RedditSource) for s in self.sources)
         has_telegram = any(isinstance(s, TelegramSource) for s in self.sources)
+        has_forums = any(isinstance(s, ForumSource) for s in self.sources)
 
         min_interval = min(
             reddit_interval if has_reddit else float("inf"),
             telegram_interval if has_telegram else float("inf"),
+            forums_interval if has_forums else float("inf"),
         )
         if min_interval == float("inf"):
             logger.error("No sources configured. Exiting.")
@@ -209,6 +224,9 @@ class ImmigrationMonitor:
                     if isinstance(source, RedditSource):
                         interval = reddit_interval
                         lookback_hours = max(reddit_config.get("check_interval_minutes", 15) * 4 / 60, 1)
+                    elif isinstance(source, ForumSource):
+                        interval = forums_interval
+                        lookback_hours = max(forums_config.get("check_interval_minutes", 60) * 4 / 60, 1)
                     else:
                         interval = telegram_interval
                         lookback_hours = telegram_config.get("lookback_hours", 2)

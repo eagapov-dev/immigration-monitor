@@ -1,7 +1,7 @@
 """
 Modular classifier facade.
 
-Routes to EnglishClassifier or RussianClassifier based on source_lang.
+Routes to EnglishClassifier or CyrillicClassifier based on source_lang.
 
 Usage:
     from classifiers import Classifier, ClassificationResult
@@ -10,7 +10,7 @@ Usage:
 """
 from .base import ClassificationResult
 from .en import EnglishClassifier
-from .ru import RussianClassifier
+from .ru import CyrillicClassifier
 
 __all__ = ["Classifier", "ClassificationResult"]
 
@@ -20,7 +20,7 @@ class Classifier:
         ai_key = config.get("anthropic_api_key")
         model = config.get("model", "claude-haiku-4-5-20251001")
         self.en = EnglishClassifier(config.get("en", {}), ai_key, model)
-        self.ru = RussianClassifier(
+        self.cyrillic = CyrillicClassifier(
             config.get("ru", {}), config.get("uk", {}), ai_key, model
         )
 
@@ -28,5 +28,5 @@ class Classifier:
         self, text: str, source_lang: str = "en", include_draft: bool = False
     ) -> ClassificationResult:
         if source_lang in ("ru", "uk", "ru/uk", "uk/ru"):
-            return self.ru.classify(text, source_lang, include_draft)
+            return self.cyrillic.classify(text, source_lang, include_draft)
         return self.en.classify(text, include_draft)

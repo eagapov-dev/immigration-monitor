@@ -1,8 +1,8 @@
 """
-Russian/Ukrainian classifier: AI-first.
+Cyrillic (Russian + Ukrainian) classifier: AI-first.
 
-Russian is morphologically rich ("виза" ≠ "визу/визой/визы"), so keyword pre-filtering
-is unreliable. We go AI-first and use keywords only as a secondary signal.
+Russian/Ukrainian are morphologically rich ("виза" ≠ "визу/визой/визы"), so keyword
+pre-filtering is unreliable. We go AI-first and use keywords only as a secondary signal.
 
 Also handles implicit questions common in Telegram:
   "ситуация такая...", "отказали", "не знаю что делать" — no "?" needed.
@@ -24,7 +24,7 @@ person clearly needs help/advice even without explicit question markers.
 """
 
 
-class RussianClassifier(BaseClassifier):
+class CyrillicClassifier(BaseClassifier):
     """
     AI-first classifier for Russian and Ukrainian text.
     Keywords are loaded from config but used only for stats/logging, not as a gate.
@@ -38,9 +38,9 @@ class RussianClassifier(BaseClassifier):
         model: str,
     ):
         super().__init__(ai_api_key, model)
-        self.ru_keywords = [kw.lower() for kw in config_ru.get("keywords", [])]
+        self.ru_keywords = [self._clean_text(kw) for kw in config_ru.get("keywords", [])]
         self.ru_question_markers = [qm.lower() for qm in config_ru.get("question_markers", [])]
-        self.uk_keywords = [kw.lower() for kw in config_uk.get("keywords", [])]
+        self.uk_keywords = [self._clean_text(kw) for kw in config_uk.get("keywords", [])]
         self.uk_question_markers = [qm.lower() for qm in config_uk.get("question_markers", [])]
 
     def _has_implicit_question(self, text_lower: str, source_lang: str) -> bool:
@@ -65,16 +65,17 @@ class RussianClassifier(BaseClassifier):
 
         if ai_result is None:
             # Fallback: keyword heuristic
-            text_lower = text.lower()
+            cleaned = self._clean_text(text)
             keywords = self.ru_keywords[:]
             if source_lang in ("uk", "uk/ru", "ru/uk"):
                 keywords.extend(self.uk_keywords)
-            kw_matches = sum(1 for kw in keywords if kw in text_lower)
-            has_question = self._has_implicit_question(text_lower, source_lang)
+            kw_matches = sum(1 for kw in keywords if self._word_match(kw, cleaned))
+            has_question = self._has_implicit_question(text.lower(), source_lang)
+            category = self._detect_category(cleaned) if kw_matches >= 1 else "other"
             return ClassificationResult(
                 is_relevant=kw_matches >= 1,
                 is_question=has_question,
-                category="other",
+                category=category,
                 urgency="medium",
                 confidence=min(kw_matches * 0.2, 1.0),
                 method="keywords",

@@ -30,6 +30,119 @@ class BaseClassifier:
         self.model = model
         self._client = None
 
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        """Remove punctuation/special chars, keep letters, digits, spaces."""
+        return re.sub(r'[^\w\s]', ' ', text.lower())
+
+    @staticmethod
+    def _word_match(keyword: str, cleaned_text: str) -> bool:
+        """Match whole word using \\b boundaries."""
+        return bool(re.search(r'\b' + re.escape(keyword) + r'\b', cleaned_text))
+
+    # Category markers — covers EN, RU, UK.  Order matters: first match wins.
+    _CATEGORY_MARKERS = {
+        "asylum": [
+            # EN
+            "asylum", "refugee", "persecution",
+            # RU
+            "убежище", "убежища", "убежищу", "убежищем",
+            "политическое убежище", "политического убежища",
+            "беженец", "беженца", "беженцу", "беженцем",
+            "беженцы", "беженцев", "беженцам", "беженцами",
+            "статус беженца", "статуса беженца",
+            # UK
+            "притулок", "притулку", "притулком",
+            "політичний притулок", "політичного притулку",
+            "біженець", "біженця", "біженцю", "біженцем",
+            "біженці", "біженців", "біженцям",
+            "статус біженця", "статусу біженця",
+        ],
+        "deportation": [
+            # EN
+            "deportation", "deport", "removal", "removal proceedings",
+            "ice",
+            # RU
+            "депортация", "депортации", "депортацию", "депортацией",
+            "депортировали", "депортируют", "депортирован", "депортирована",
+            "принудительное выдворение",
+            "рейд", "рейды", "рейдов",
+            "задержали", "задержан", "задержана", "задержание", "задержания",
+            # UK
+            "депортація", "депортації", "депортацію", "депортацією",
+            "депортували", "депортують", "депортований", "депортована",
+            "затримали", "затримання", "затриманий", "затримана",
+        ],
+        "green_card": [
+            # EN
+            "green card", "greencard", "i-485", "adjustment of status",
+            "permanent resident",
+            # RU
+            "грин карта", "грин карту", "грин карты", "грин картой",
+            "грин-карта", "грин-карту", "грин-карты", "грин-картой",
+            # UK
+            "грін карта", "грін карту", "грін карти", "грін картою",
+            "грін-карта", "грін-карту", "грін-карти",
+        ],
+        "visa": [
+            # EN
+            "visa", "h-1b", "h1b", "o-1", "o1",
+            "eb-1", "eb1", "eb-2", "eb2", "niw",
+            "consulate",
+            # RU
+            "виза", "визу", "визы", "визой", "визе",
+            "визовый", "визовая", "визовую", "визового", "визовой", "визовые",
+            "рабочая виза", "рабочей визы", "рабочую визу",
+            "консульство", "консульства", "консульству", "консульством", "консульстве",
+            # UK
+            "віза", "візу", "візи", "візою", "візі", "віз",
+            "візовий", "візову", "візової", "візових",
+            "робоча віза", "робочої візи", "робочу візу",
+            "туристична віза",
+            "консульство", "консульства", "консульству", "консульством", "консульстві",
+        ],
+        "work": [
+            # EN
+            "work permit", "ead", "i-765", "employment authorization",
+            # RU
+            "разрешение на работу", "разрешения на работу", "разрешению на работу",
+            # UK
+            "дозвіл на роботу", "дозволу на роботу", "дозволом на роботу",
+        ],
+        "family": [
+            # EN
+            "i-130", "petition", "sponsor", "spouse", "marriage",
+            # RU
+            "петиция", "петиции", "петицию", "петицией",
+            "семейная",
+            # UK
+        ],
+        "citizenship": [
+            # EN
+            "citizenship", "naturalization", "n-400",
+            # RU
+            "гражданство", "гражданства", "гражданству", "гражданством",
+            "натурализация", "натурализации", "натурализацию", "натурализацией",
+            # UK
+            "громадянство", "громадянства", "громадянству", "громадянством",
+        ],
+        "tps": [
+            # EN
+            "tps", "temporary protected status", "daca",
+            # RU / UK
+            "парол", "пароля", "паролю", "паролем",
+            "гуманитарный пароль", "гуманитарного пароля",
+            "гуманітарний пароль", "гуманітарного пароля",
+        ],
+    }
+
+    def _detect_category(self, cleaned: str) -> str:
+        """Detect immigration category from cleaned text."""
+        for cat, markers in self._CATEGORY_MARKERS.items():
+            if any(self._word_match(self._clean_text(m), cleaned) for m in markers):
+                return cat
+        return "other"
+
     def _get_ai_client(self):
         """Lazy-load Anthropic client."""
         if self._client is None:
@@ -46,6 +159,8 @@ class BaseClassifier:
         extra_prompt: str = ""
     ) -> ClassificationResult:
         """Call Claude AI and return ClassificationResult."""
+        if not self.anthropic_api_key or self.anthropic_api_key == "YOUR_ANTHROPIC_API_KEY":
+            return None
         client = self._get_ai_client()
 
         draft_instruction = ""
