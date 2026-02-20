@@ -14,7 +14,10 @@ from classifiers import Classifier
 
 
 # ── Load real config so tests match production keywords ──────────────────────
-with open("config.yaml", "r", encoding="utf-8") as _f:
+import os as _os
+
+_config_path = "config.yaml" if _os.path.exists("config.yaml") else "config.example.yaml"
+with open(_config_path, "r", encoding="utf-8") as _f:
     _CFG = yaml.safe_load(_f)["classification"]
 
 
